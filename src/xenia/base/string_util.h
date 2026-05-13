@@ -57,7 +57,8 @@ inline size_t copy_truncating(char16_t* dest, const std::u16string_view source,
   if (!dest_buffer_count) {
     return 0;
   }
-  size_t chars_copied = std::min(source.size(), dest_buffer_count - size_t(1));
+  size_t chars_copied = std::min(
+      source.size(), (dest_buffer_count / sizeof(char16_t)) - size_t(1));
   std::memcpy(dest, source.data(), chars_copied * sizeof(char16_t));
   dest[chars_copied] = u'\0';
   return chars_copied;
@@ -69,7 +70,8 @@ inline size_t copy_and_swap_truncating(char16_t* dest,
   if (!dest_buffer_count) {
     return 0;
   }
-  size_t chars_copied = std::min(source.size(), dest_buffer_count - size_t(1));
+  size_t chars_copied = std::min(
+      source.size(), (dest_buffer_count / sizeof(char16_t)) - size_t(1));
   xe::copy_and_swap(dest, source.data(), chars_copied);
   dest[chars_copied] = u'\0';
   return chars_copied;
@@ -95,7 +97,8 @@ inline size_t copy_maybe_truncating(char16_t* dest,
   if (!dest_buffer_count) {
     return 0;
   }
-  size_t chars_copied = std::min(source.size(), dest_buffer_count);
+  size_t chars_copied = std::min(
+      source.size(), (dest_buffer_count / sizeof(char16_t)) - size_t(1));
   std::memcpy(dest, source.data(), chars_copied * sizeof(char16_t));
   return chars_copied;
 }
@@ -108,7 +111,8 @@ inline size_t copy_and_swap_maybe_truncating(char16_t* dest,
   if (!dest_buffer_count) {
     return 0;
   }
-  size_t chars_copied = std::min(source.size(), dest_buffer_count);
+  size_t chars_copied = std::min(
+      source.size(), (dest_buffer_count / sizeof(char16_t)) - size_t(1));
   xe::copy_and_swap(dest, source.data(), chars_copied);
   return chars_copied;
 }
