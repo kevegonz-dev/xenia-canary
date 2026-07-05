@@ -612,8 +612,10 @@ dword_result_t XamUserCheckPrivilege_entry(dword_t user_index, dword_t mask,
     return X_ERROR_NO_SUCH_USER;
   }
 
-  if (kernel_state()->xam_state()->GetUserProfile(user_index)->signin_state() !=
-      X_USER_SIGNIN_STATE::SignedInToLive) {
+  if (!kernel_state()
+           ->xam_state()
+           ->GetUserProfile(user_index)
+           ->IsSignedInToLive()) {
     return X_ERROR_NOT_LOGGED_ON;
   }
 
@@ -732,7 +734,7 @@ dword_result_t XamUserAreUsersFriends_entry(
       const auto& user_profile =
           kernel_state()->xam_state()->GetUserProfile(user_index);
 
-      if (user_profile->signin_state() != X_USER_SIGNIN_STATE::SignedInToLive) {
+      if (!user_profile->IsSignedInToLive()) {
         result = X_ERROR_NOT_LOGGED_ON;
       } else {
         uint32_t friends_count = 0;

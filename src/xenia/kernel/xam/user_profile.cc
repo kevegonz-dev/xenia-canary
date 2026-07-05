@@ -52,6 +52,17 @@ void UserProfile::LoadFriends() {
       xuid_, kernel_state()->GetXboxLiveAPI()->GetDummyFriendsCount());
 }
 
+bool UserProfile::IsSignedInToLive() const {
+  return signin_state() == X_USER_SIGNIN_STATE::SignedInToLive;
+}
+
+X_USER_SIGNIN_STATE UserProfile::signin_state() const {
+  return IsLiveEnabled() &&
+                 kernel_state()->GetXboxLiveAPI()->IsConnectedToServer()
+             ? X_USER_SIGNIN_STATE::SignedInToLive
+             : X_USER_SIGNIN_STATE::SignedInLocally;
+}
+
 GpdInfo* UserProfile::GetGpd(const uint32_t title_id) {
   return const_cast<GpdInfo*>(
       const_cast<const UserProfile*>(this)->GetGpd(title_id));

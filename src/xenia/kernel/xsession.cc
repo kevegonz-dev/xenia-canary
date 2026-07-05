@@ -89,8 +89,7 @@ X_RESULT XSession::CreateSession(uint32_t user_index, uint8_t public_slots,
   // If a session requires online features but we're offline then we must fail.
   // e.g. Trying to create a SINGLEPLAYER_WITH_STATS session while not connected
   // to live.
-  if (IsXboxLiveSession() && user_profile->signin_state() !=
-                                 xam::X_USER_SIGNIN_STATE::SignedInToLive) {
+  if (IsXboxLiveSession() && !user_profile->IsSignedInToLive()) {
     return X_ONLINE_E_SESSION_NOT_LOGGED_ON;
   }
 

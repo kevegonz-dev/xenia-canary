@@ -121,7 +121,7 @@ bool UserTracker::UnlockAchievement(uint64_t xuid, uint32_t achievement_id) {
   gpd_achievement->flags = gpd_achievement->flags |
                            static_cast<uint32_t>(AchievementFlags::kAchieved);
 
-  if (user->signin_state() == X_USER_SIGNIN_STATE::SignedInToLive) {
+  if (user->IsSignedInToLive()) {
     gpd_achievement->flags =
         gpd_achievement->flags |
         static_cast<uint32_t>(AchievementFlags::kAchievedOnline);
@@ -1643,7 +1643,7 @@ void UserTracker::PeriodicMaintenance(uint64_t xuid,
     xe::discord::DiscordPresence::Update();
   }
 
-  if (user->signin_state() != X_USER_SIGNIN_STATE::SignedInToLive ||
+  if (!user->IsSignedInToLive() ||
       kernel_state()->GetXboxLiveAPI()->GetInitState() !=
           XLiveAPI::InitState::Success) {
     return;

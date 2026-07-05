@@ -109,6 +109,12 @@ static uint32_t XTitleServerCreateEnumerator(
     uint32_t user_index, uint32_t app_id, uint32_t open_message,
     uint32_t close_message, uint32_t extra_size, uint32_t item_count,
     uint32_t flags, uint32_t& out_handle) {
+  const auto profile = kernel_state()->xam_state()->GetUserProfile(user_index);
+
+  if (profile && !profile->IsSignedInToLive()) {
+    return X_ONLINE_E_LOGON_NOT_LOGGED_ON;
+  }
+
   auto e = make_object<XStaticEnumerator<X_TITLE_SERVER>>(kernel_state(),
                                                           item_count);
 

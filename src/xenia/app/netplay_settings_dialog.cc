@@ -138,34 +138,36 @@ void NetplaySettingsDialog::OnDraw(ImGuiIO& io) {
 
     if (ImGui::Combo("##Network Modes", &selected_network_mode_index_,
                      network_modes_, std::size(network_modes_))) {
-      switch (selected_network_mode_index_) {
-        case xe::kernel::NETWORK_MODE::OFFLINE: {
-          kernel_state->BroadcastNotification(
-              kXNotificationLiveConnectionChanged,
-              X_ONLINE_S_LOGON_DISCONNECTED);
+      if (xlive_api->SetNetworkMode(selected_network_mode_index_)) {
+        switch (cvars::network_mode) {
+          case xe::kernel::NETWORK_MODE::OFFLINE: {
+            kernel_state->BroadcastNotification(
+                kXNotificationLiveConnectionChanged,
+                X_ONLINE_S_LOGON_DISCONNECTED);
 
-          kernel_state->BroadcastNotification(
-              kXNotificationLiveLinkStateChanged, 0);
-        } break;
-        case xe::kernel::NETWORK_MODE::LAN: {
-          kernel_state->BroadcastNotification(
-              kXNotificationLiveConnectionChanged,
-              X_ONLINE_S_LOGON_DISCONNECTED);
+            kernel_state->BroadcastNotification(
+                kXNotificationLiveLinkStateChanged, 0);
+          } break;
+          case xe::kernel::NETWORK_MODE::LAN: {
+            kernel_state->BroadcastNotification(
+                kXNotificationLiveConnectionChanged,
+                X_ONLINE_S_LOGON_DISCONNECTED);
 
-          kernel_state->BroadcastNotification(
-              kXNotificationLiveLinkStateChanged, 1);
-        } break;
-        case xe::kernel::NETWORK_MODE::XBOXLIVE: {
-          kernel_state->BroadcastNotification(
-              kXNotificationLiveConnectionChanged,
-              X_ONLINE_S_LOGON_CONNECTION_ESTABLISHED);
+            kernel_state->BroadcastNotification(
+                kXNotificationLiveLinkStateChanged, 1);
+          } break;
+          case xe::kernel::NETWORK_MODE::XBOXLIVE: {
+            kernel_state->BroadcastNotification(
+                kXNotificationLiveConnectionChanged,
+                X_ONLINE_S_LOGON_CONNECTION_ESTABLISHED);
 
-          kernel_state->BroadcastNotification(
-              kXNotificationLiveLinkStateChanged, 1);
-        } break;
+            kernel_state->BroadcastNotification(
+                kXNotificationLiveLinkStateChanged, 1);
+          } break;
+        }
+      } else {
+        selected_network_mode_index_ = cvars::network_mode;
       }
-
-      xlive_api->SetNetworkMode(selected_network_mode_index_);
     }
 
     ImGui::Spacing();

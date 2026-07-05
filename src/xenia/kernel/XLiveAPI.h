@@ -80,7 +80,7 @@ class XLiveAPI {
 
   void SetAPIAddress(std::string address);
 
-  void SetNetworkMode(uint32_t mode);
+  bool SetNetworkMode(uint32_t mode);
 
   void SetLogging(bool state) const;
 

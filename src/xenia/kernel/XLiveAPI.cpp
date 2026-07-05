@@ -204,27 +204,46 @@ void XLiveAPI::SetAPIAddress(std::string address) {
   }
 }
 
-void XLiveAPI::SetNetworkMode(uint32_t mode) {
-  OVERRIDE_int32(network_mode, mode);
+bool XLiveAPI::SetNetworkMode(uint32_t mode) {
+  if (cvars::network_mode == mode) {
+    return true;
+  }
+
+  if (initialized_ == InitState::Pending) {
+    OVERRIDE_int32(network_mode, mode);
+    return true;
+  }
 
   if (mode == NETWORK_MODE::OFFLINE) {
-    if (IsConnectedToServer()) {
-      DeleteAllSessionsByMac();
-    }
+    cvars::network_mode = mode;
 
+    DeleteAllSessionsByMac();
+
+    initialized_ = InitState::Failed;
     online_ip_ = {};
+    xlsp_servers_cached_ = false;
+    qos_payload_cache_.clear();
+
+    OVERRIDE_int32(network_mode, mode);
+
+    return true;
   }
 
-  // Initialize Server
-  if (initialized_ != InitState::Pending) {
-    initialized_ = InitState::Pending;
+  // Reinitialize Server
+  initialized_ = InitState::Pending;
 
-    if (mode != NETWORK_MODE::OFFLINE) {
-      StartWhoamiAsync();
-    }
+  cvars::network_mode = mode;
 
-    Init();
+  StartWhoamiAsync();
+  Init();
+
+  const bool switched_mode = cvars::network_mode == mode;
+
+  if (switched_mode) {
+    OVERRIDE_int32(network_mode, mode);
   }
+
+  return switched_mode;
 }
 
 void XLiveAPI::SetLogging(bool state) const { OVERRIDE_bool(logging, state); }
@@ -286,6 +305,18 @@ void XLiveAPI::Init() {
     }
   }
 
+  const auto adapter_manager =
+      kernel_state()->emulator()->GetNetworkAdapterManager();
+
+  if (!adapter_manager->IsInterfaceSelected()) {
+    XELOGI("XLiveAPI:: No interfaces found, enabling offline mode!");
+
+    initialized_ = InitState::Failed;
+    cvars::network_mode = NETWORK_MODE::OFFLINE;
+
+    return;
+  }
+
   if (cvars::network_mode == NETWORK_MODE::OFFLINE) {
     XELOGI("XLiveAPI:: Offline mode enabled!");
     initialized_ = InitState::Failed;
@@ -301,6 +332,8 @@ void XLiveAPI::Init() {
   if (!IsConnectedToServer()) {
     // Assign online ip as local ip to ensure XNADDR is not 0 for systemlink
     // online_ip_ = local_ip_;
+
+    cvars::network_mode = NETWORK_MODE::LAN;
 
     XELOGE("XLiveAPI:: Cannot reach API server.");
     initialized_ = InitState::Failed;
@@ -1236,6 +1269,12 @@ void XLiveAPI::DeleteSession(uint64_t sessionId) {
 void XLiveAPI::DeleteAllSessionsByMac() {
   const std::string endpoint = BuildEndpoint(
       fmt::format("DeleteSessions/{}", GetConsoleMacAddress().to_string()));
+
+  // Since we usually delete on close, we don't want to block main thread on
+  // close.
+  if (!IsConnectedToServer()) {
+    return;
+  }
 
   std::unique_ptr<HTTPResponseObjectJSON> response = Delete(endpoint);
 

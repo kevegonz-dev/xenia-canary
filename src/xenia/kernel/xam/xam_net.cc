@@ -784,8 +784,8 @@ dword_result_t NetDll_XNetServerToInAddr_entry(dword_t caller,
                                                pointer_t<in_addr> pina) {
   XELOGI("XNetServerToInAddr");
 
-  if (kernel_state()->GetXboxLiveAPI()->GetInitState() !=
-      XLiveAPI::InitState::Success) {
+  if (kernel_state()->GetXboxLiveAPI()->GetInitState() ==
+      XLiveAPI::InitState::Pending) {
     return static_cast<uint32_t>(X_WSAError::X_WSANOTINITIALISED);
   }
 
