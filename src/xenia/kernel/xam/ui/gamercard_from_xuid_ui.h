@@ -12,7 +12,6 @@
 
 #include <future>
 
-#include "xenia/kernel/json/friend_presence_object_json.h"
 #include "xenia/kernel/xam/xam_ui.h"
 
 namespace xe {
@@ -37,6 +36,7 @@ class GamercardFromXUIDUI : public XamDialog {
       immediate_gamerpic_;
   UserProfile* profile_;
   FriendPresenceObjectJSON presence_;
+  X_ONLINE_FRIEND friend_presence_;
 };
 
 }  // namespace ui

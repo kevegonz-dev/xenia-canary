@@ -60,7 +60,8 @@ GamercardFromXUIDUI::GamercardFromXUIDUI(xe::ui::ImGuiDrawer* imgui_drawer,
     }
   } else {
     const auto presences =
-        kernel_state()->GetXboxLiveAPI()->GetFriendsPresence({xuid_});
+        kernel_state()->presence_manager()->GetFriendsPresence(profile_->xuid(),
+                                                               {xuid_});
 
     immediate_gamerpic_ = std::async(std::launch::async, [xuid,
                                                           imgui_drawer]() {
@@ -72,6 +73,8 @@ GamercardFromXUIDUI::GamercardFromXUIDUI(xe::ui::ImGuiDrawer* imgui_drawer,
 
       return shared_gamerpic;
     });
+
+    presence_.XUID(xuid_);
 
     if (!presences->PlayersPresence().empty()) {
       presence_ = presences->PlayersPresence().front();
@@ -121,8 +124,10 @@ void GamercardFromXUIDUI::OnDraw(ImGuiIO& io) {
       ImGui::CloseCurrentPopup();
     }
 
-    xeDrawFriendContent(imgui_drawer(), profile_, gamerpic_texture, presence_,
-                        nullptr, nullptr);
+    friend_presence_ = presence_.GetFriendPresence();
+
+    xeDrawFriendContent(imgui_drawer(), profile_, gamerpic_texture,
+                        friend_presence_, nullptr, nullptr);
 
     ImGui::EndPopup();
   }
