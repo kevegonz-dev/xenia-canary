@@ -415,7 +415,6 @@ dword_result_t XamUserCheckPrivilege_entry(dword_t user_index, dword_t mask,
     for (uint8_t i = 0; i < XUserMaxUserCount; ++i) {
       const auto result = XamUserCheckPrivilege_entry(i, mask, out_value);
       if (result != X_ERROR_NO_SUCH_USER) {
-        *out_value = 0;
         return result;
       }
     }
@@ -431,14 +430,9 @@ dword_result_t XamUserCheckPrivilege_entry(dword_t user_index, dword_t mask,
     return X_ERROR_NO_SUCH_USER;
   }
 
-  if (kernel_state()->xam_state()->GetUserProfile(user_index)->signin_state() !=
-      static_cast<uint32_t>(SignInState::SignedInToLive)) {
-    *out_value = 0;
-    return X_ERROR_NOT_LOGGED_ON;
-  }
-
-  // If we deny everything, games should hopefully not try to do stuff.
-  *out_value = 0;
+  // BO2 Zombies Local needs the signed-in local profile to satisfy privilege
+  // checks before it will treat that profile as a valid lobby participant.
+  *out_value = 1;
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserCheckPrivilege, kUserProfiles, kStub);
