@@ -70,6 +70,31 @@ UserProfile* GetUserProfileByOfflineOrOnlineXuid(uint64_t xuid) {
   return nullptr;
 }
 
+uint8_t GetUserIndexByOfflineOrOnlineXuid(uint64_t xuid) {
+  const uint8_t direct_index = kernel_state()
+                                   ->xam_state()
+                                   ->profile_manager()
+                                   ->GetUserIndexAssignedToProfile(xuid);
+  if (direct_index != XUserIndexAny) {
+    return direct_index;
+  }
+
+  for (uint8_t i = 0; i < XUserMaxUserCount; ++i) {
+    if (!kernel_state()->xam_state()->IsUserSignedIn(
+            static_cast<uint32_t>(i))) {
+      continue;
+    }
+
+    auto user_profile =
+        kernel_state()->xam_state()->GetUserProfile(static_cast<uint32_t>(i));
+    if (GetProfileOnlineXuid(user_profile) == xuid) {
+      return i;
+    }
+  }
+
+  return XUserIndexAny;
+}
+
 X_HRESULT_result_t XamUserGetXUID_entry(dword_t user_index, dword_t type_mask,
                                         lpqword_t xuid_ptr) {
   assert_true(type_mask == 1 || type_mask == 2 || type_mask == 3 ||
@@ -118,10 +143,8 @@ dword_result_t XamUserGetIndexFromXUID_entry(qword_t xuid, dword_t flags,
     return X_E_INVALIDARG;
   }
 
-  const uint8_t user_index = kernel_state()
-                                 ->xam_state()
-                                 ->profile_manager()
-                                 ->GetUserIndexAssignedToProfile(xuid);
+  const uint8_t user_index =
+      GetUserIndexByOfflineOrOnlineXuid(static_cast<uint64_t>(xuid));
 
   if (user_index == XUserIndexAny) {
     return X_E_NO_SUCH_USER;
@@ -304,13 +327,14 @@ uint32_t XamUserReadProfileSettingsEx(
       return X_ERROR_FUNCTION_FAILED;
     }
 
+    const uint64_t requested_xuid = xuids ? static_cast<uint64_t>(xuids[0]) : 0;
+
     if (xuids) {
-      uint64_t user_xuid = static_cast<uint64_t>(xuids[0]);
-      if (!kernel_state()->xam_state()->IsUserSignedIn(user_xuid)) {
+      user_profile = GetUserProfileByOfflineOrOnlineXuid(requested_xuid);
+      if (!user_profile) {
         extended_error = X_E_NO_SUCH_USER;
         return X_ERROR_FUNCTION_FAILED;
       }
-      user_profile = kernel_state()->xam_state()->GetUserProfile(user_xuid);
     }
 
     if (!user_profile) {
@@ -352,7 +376,7 @@ uint32_t XamUserReadProfileSettingsEx(
 
       if (is_valid) {
         if (xuids) {
-          out_setting->xuid = user_profile->xuid();
+          out_setting->xuid = requested_xuid;
         } else {
           out_setting->xuid = -1;
           out_setting->user_index = user_index;
@@ -763,7 +787,7 @@ dword_result_t XamReadTile_entry(dword_t tile_type, dword_t title_id,
                                  pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
   auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
   if (!user) {
-    user = kernel_state()->xam_state()->GetUserProfile(item_id);
+    user = GetUserProfileByOfflineOrOnlineXuid(static_cast<uint64_t>(item_id));
     if (!user) {
       return X_ERROR_INVALID_PARAMETER;
     }
@@ -1098,7 +1122,11 @@ dword_result_t XamUserGetSubscriptionType_entry(dword_t user_index,
     return X_ERROR_INVALID_PARAMETER;
   }
 
-  *subscription_ptr = user->GetSubscriptionTier();
+  // Keep this consistent with XamUserGetMembershipTier in the BO2 profile-fix
+  // lane. BO2 Zombies Local probes subscription state while building the
+  // lobby card, but global Live sign-in mode caused heavier online paths.
+  *subscription_ptr =
+      X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierGold;
   *r5 = 0x0;
 
   return X_ERROR_SUCCESS;
