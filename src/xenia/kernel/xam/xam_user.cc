@@ -28,6 +28,48 @@ namespace xe {
 namespace kernel {
 namespace xam {
 
+constexpr uint32_t kXUserXuidOffline = 1;
+constexpr uint32_t kXUserXuidOnline = 2;
+constexpr uint32_t kXUserXuidGuest = 4;
+constexpr uint32_t kXUserInfoFlagLiveEnabled = 1;
+constexpr uint64_t kSyntheticOnlineXuidPrefix = 0x0009000000000000ull;
+constexpr uint64_t kSyntheticOnlineXuidLowMask = 0x0000FFFFFFFFFFFFull;
+
+uint64_t GetProfileOnlineXuid(const UserProfile* user_profile) {
+  if (!user_profile) {
+    return 0;
+  }
+
+  const uint64_t stored_online_xuid = user_profile->GetOnlineXUID();
+  if (stored_online_xuid) {
+    return stored_online_xuid;
+  }
+
+  return kSyntheticOnlineXuidPrefix |
+         (user_profile->xuid() & kSyntheticOnlineXuidLowMask);
+}
+
+UserProfile* GetUserProfileByOfflineOrOnlineXuid(uint64_t xuid) {
+  if (auto user_profile = kernel_state()->xam_state()->GetUserProfile(xuid)) {
+    return user_profile;
+  }
+
+  for (uint8_t i = 0; i < XUserMaxUserCount; ++i) {
+    if (!kernel_state()->xam_state()->IsUserSignedIn(
+            static_cast<uint32_t>(i))) {
+      continue;
+    }
+
+    auto user_profile =
+        kernel_state()->xam_state()->GetUserProfile(static_cast<uint32_t>(i));
+    if (GetProfileOnlineXuid(user_profile) == xuid) {
+      return user_profile;
+    }
+  }
+
+  return nullptr;
+}
+
 X_HRESULT_result_t XamUserGetXUID_entry(dword_t user_index, dword_t type_mask,
                                         lpqword_t xuid_ptr) {
   assert_true(type_mask == 1 || type_mask == 2 || type_mask == 3 ||
@@ -52,21 +94,18 @@ X_HRESULT_result_t XamUserGetXUID_entry(dword_t user_index, dword_t type_mask,
   uint32_t result = X_E_NO_SUCH_USER;
   uint64_t xuid = 0;
 
-  auto type = user_profile->type() & type_mask;
-  if (type_mask & 4) {
-    // BO2 Zombies Local asks for an online XUID while still running with a
-    // local profile. Treat the signed-in local profile as having an online XUID
-    // for this query without changing the global sign-in state.
-    xuid = user_profile->xuid();
+  if (type_mask & kXUserXuidOnline) {
+    // BO2 Zombies Local builds lobby/player state from online-XUID queries.
+    // Return an online-shaped XUID without switching the whole profile into
+    // Live sign-in mode, which sends BO2 down heavier online memory paths.
+    xuid = GetProfileOnlineXuid(user_profile);
     result = X_E_SUCCESS;
-  } else if (type & 2) {
-    // maybe online profile?
-    xuid = user_profile->xuid();
-    result = X_E_SUCCESS;
-  } else if (type & 1) {
+  } else if (type_mask & kXUserXuidOffline) {
     // maybe offline profile?
     xuid = user_profile->xuid();
     result = X_E_SUCCESS;
+  } else if (type_mask == kXUserXuidGuest) {
+    result = X_E_NO_SUCH_USER;
   }
   *xuid_ptr = xuid;
   return result;
@@ -132,14 +171,15 @@ X_HRESULT_result_t XamUserGetSigninInfo_entry(
   xe::string_util::copy_truncating(info->name, user_profile->name(),
                                    xe::countof(info->name));
 
-  // X_USER_INFO_FLAG_LIVE_ENABLED. Stock Canary doesn't define the named
-  // constant yet, but BO2 Zombies uses this info to decide whether the local
-  // player is a valid lobby member.
-  info->flags = 1;
+  // BO2 Zombies uses this info to decide whether the local player is a valid
+  // lobby member. Keep global sign-in local, but present the profile as Live
+  // enabled and provide an online-shaped XUID when requested.
+  info->flags = kXUserInfoFlagLiveEnabled;
 
-  if (!flags || flags & X_USER_GET_SIGNIN_INFO_OFFLINE_XUID_ONLY ||
-      flags & X_USER_GET_SIGNIN_INFO_ONLINE_XUID_ONLY) {
+  if (flags & X_USER_GET_SIGNIN_INFO_OFFLINE_XUID_ONLY) {
     info->xuid = user_profile->xuid();
+  } else if (!flags || flags & X_USER_GET_SIGNIN_INFO_ONLINE_XUID_ONLY) {
+    info->xuid = GetProfileOnlineXuid(user_profile);
   }
 
   info->signin_state = user_profile->signin_state();
@@ -487,6 +527,34 @@ dword_result_t XamUserContentRestrictionCheckAccess_entry(
 }
 DECLARE_XAM_EXPORT1(XamUserContentRestrictionCheckAccess, kUserProfiles, kStub);
 
+dword_result_t XamUserGetAgeGroup_entry(
+    dword_t user_index, lpdword_t age_ptr,
+    pointer_t<XAM_OVERLAPPED> overlapped_ptr) {
+  if (!age_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!kernel_state()->xam_state()->IsUserSignedIn(user_index)) {
+    return X_ERROR_NO_SUCH_USER;
+  }
+
+  auto run = [age_ptr](uint32_t& extended_error, uint32_t& length) -> X_RESULT {
+    *age_ptr = 2;  // X_USER_AGE_GROUP::ADULT
+    extended_error = X_HRESULT_FROM_WIN32(X_ERROR_SUCCESS);
+    length = 0;
+    return X_ERROR_SUCCESS;
+  };
+
+  if (!overlapped_ptr) {
+    uint32_t extended_error, length;
+    return run(extended_error, length);
+  }
+
+  kernel_state()->CompleteOverlappedDeferredEx(run, overlapped_ptr);
+  return X_ERROR_IO_PENDING;
+}
+DECLARE_XAM_EXPORT1(XamUserGetAgeGroup, kUserProfiles, kImplemented);
+
 dword_result_t XamUserIsOnlineEnabled_entry(dword_t user_index) {
   if (user_index >= XUserMaxUserCount) {
     return 0;
@@ -514,7 +582,7 @@ dword_result_t XamUserGetMembershipTier_entry(dword_t user_index) {
 DECLARE_XAM_EXPORT1(XamUserGetMembershipTier, kUserProfiles, kImplemented);
 
 dword_result_t XamUserGetMembershipTierFromXUID_entry(qword_t xuid) {
-  const auto profile = kernel_state()->xam_state()->GetUserProfile(xuid);
+  const auto profile = GetUserProfileByOfflineOrOnlineXuid(xuid);
   if (!profile) {
     return X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierNone;
   }
@@ -1062,7 +1130,7 @@ dword_result_t XamUserGetUserFlags_entry(dword_t user_index) {
 DECLARE_XAM_EXPORT1(XamUserGetUserFlags, kUserProfiles, kImplemented);
 
 dword_result_t XamUserGetUserFlagsFromXUID_entry(qword_t xuid) {
-  const auto& user_profile = kernel_state()->xam_state()->GetUserProfile(xuid);
+  const auto& user_profile = GetUserProfileByOfflineOrOnlineXuid(xuid);
   if (!user_profile) {
     return 0;
   }
@@ -1072,7 +1140,7 @@ dword_result_t XamUserGetUserFlagsFromXUID_entry(qword_t xuid) {
 DECLARE_XAM_EXPORT1(XamUserGetUserFlagsFromXUID, kUserProfiles, kImplemented);
 
 dword_result_t XamUserGetOnlineLanguageFromXUID_entry(qword_t xuid) {
-  const auto& user = kernel_state()->xam_state()->GetUserProfile(xuid);
+  const auto& user = GetUserProfileByOfflineOrOnlineXuid(xuid);
   if (!user) {
     return kernel_state()->xconfig()->ReadSetting<uint32_t>(
         XCONFIG_USER_CATEGORY, XCONFIG_USER_LANGUAGE);
@@ -1083,7 +1151,7 @@ DECLARE_XAM_EXPORT1(XamUserGetOnlineLanguageFromXUID, kUserProfiles,
                     kImplemented);
 
 dword_result_t XamUserGetOnlineCountryFromXUID_entry(qword_t xuid) {
-  const auto& user = kernel_state()->xam_state()->GetUserProfile(xuid);
+  const auto& user = GetUserProfileByOfflineOrOnlineXuid(xuid);
   if (!user) {
     return kernel_state()->xconfig()->ReadSetting<uint8_t>(
         XCONFIG_USER_CATEGORY, XCONFIG_USER_COUNTRY);

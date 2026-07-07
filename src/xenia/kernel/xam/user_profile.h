@@ -102,6 +102,7 @@ class UserProfile {
   UserProfile(const uint64_t xuid, const X_XAMACCOUNTINFO* account_info);
 
   uint64_t xuid() const { return xuid_; }
+  uint64_t GetOnlineXUID() const { return account_info_.GetOnlineXUID(); }
   std::string name() const { return account_info_.GetGamertagString(); }
   uint32_t signin_state() const {
     return static_cast<uint32_t>(SignInState::SignedInLocally);
