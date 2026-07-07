@@ -104,11 +104,7 @@ class UserProfile {
   uint64_t xuid() const { return xuid_; }
   std::string name() const { return account_info_.GetGamertagString(); }
   uint32_t signin_state() const {
-    // BO2 Zombies Local rejects the lobby if the profile looks local-only.
-    // This research build keeps the saved profile intact but reports the
-    // already signed-in profile as Live-capable to match the path Netplay
-    // appears to satisfy for this title.
-    return static_cast<uint32_t>(SignInState::SignedInToLive);
+    return static_cast<uint32_t>(SignInState::SignedInLocally);
   };
   uint32_t type() const { return 1 | 2; /* local | online profile? */ }
 

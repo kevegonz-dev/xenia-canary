@@ -544,14 +544,11 @@ dword_result_t XamUserAreUsersFriends_entry(
       const auto& user_profile =
           kernel_state()->xam_state()->GetUserProfile(user_index);
 
-      // Check if we are signed into live
-      if (user_profile->signin_state() != 2) {
-        result = X_ERROR_NOT_LOGGED_ON;
-      } else {
-        // No friends!
-        are_friends = true;
-        result = X_ERROR_SUCCESS;
-      }
+      // BO2 Zombies Local queries this while deciding whether the signed-in
+      // local player is a valid lobby participant. Succeed for offline/local
+      // profiles in this research build without forcing global Live sign-in.
+      are_friends = true;
+      result = X_ERROR_SUCCESS;
     } else {
       result = X_ERROR_NO_SUCH_USER;
     }
