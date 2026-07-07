@@ -1,0 +1,104 @@
+name: Codex Windows Netplay Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_ref:
+        description: "Branch, tag, or SHA to build"
+        required: true
+        default: "codex/bo2-netplay-low-port-remap-v6.0.0"
+        type: string
+
+jobs:
+  build:
+    name: Build patched Windows Netplay
+    runs-on: windows-2025
+
+    env:
+      POWERSHELL_TELEMETRY_OPTOUT: 1
+
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.build_ref }}
+          fetch-depth: 0
+
+      - name: Verify low-port patch marker
+        shell: pwsh
+        run: |
+          Select-String -Path "src\xenia\kernel\xsocket.cc" -Pattern "BO2 Zombies binds a VDP/UDP socket to port 1000" -SimpleMatch
+
+      - name: Cache Vulkan SDK
+        id: cache-vulkan-sdk
+        uses: actions/cache@v5
+        with:
+          path: C:\VulkanSDK
+          key: ${{ runner.os }}-vulkan-sdk-${{ hashFiles('**/vulkan-sdk.exe') }}
+          restore-keys: |
+            ${{ runner.os }}-vulkan-sdk-
+
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          if (Test-Path -Path "C:\VulkanSDK") {
+            echo "Vulkan SDK found in cache."
+          } else {
+            Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile "vulkan-sdk.exe"
+            Start-Process -FilePath "vulkan-sdk.exe" -ArgumentList "--accept-licenses", "--default-answer", "--confirm-command", "install" -Wait
+          }
+          $env:VULKAN_SDK = "C:\VulkanSDK\$(Get-ChildItem -Path 'C:\VulkanSDK' -Directory | Select-Object -First 1 -ExpandProperty Name)"
+          $env:PATH = "$env:VULKAN_SDK\Bin;$env:PATH"
+          echo "VULKAN_SDK=$env:VULKAN_SDK" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "$env:VULKAN_SDK\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          foreach ($tool in @("glslangValidator", "spirv-opt", "spirv-dis")) {
+            $toolPath = "$env:VULKAN_SDK\Bin\$tool.exe"
+            if (Test-Path $toolPath) {
+              echo "$tool found at: $toolPath"
+              & $toolPath --version 2>$null
+            } else {
+              echo "Warning: $tool.exe not found at expected location"
+            }
+          }
+
+          $fxcPaths = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\fxc.exe" -ErrorAction SilentlyContinue | Sort-Object FullName
+          if ($fxcPaths) {
+            $fxcPath = $fxcPaths[-1].FullName
+            echo "FXC found at: $fxcPath"
+          } else {
+            echo "Warning: fxc.exe not found in Windows SDK"
+          }
+
+      - name: Download submodules
+        shell: pwsh
+        run: git submodule update --init --depth=1 -j $env:NUMBER_OF_PROCESSORS
+
+      - name: Build Xenia
+        shell: pwsh
+        run: python xenia-build.py build --config=Release --target=xenia-app
+
+      - name: Prepare artifacts
+        id: prepare_artifacts
+        shell: pwsh
+        run: |
+          $exe = 'build\bin\Windows\Release\xenia_canary_netplay.exe'
+          if ((Get-Item $exe).Length -le 100000) {
+            echo "::error::Executable is too small."
+            exit 1
+          }
+          robocopy . build\bin\Windows\Release LICENSE /r:0 /w:0
+          robocopy build\bin\Windows\Release artifacts\xenia_canary_netplay xenia_canary_netplay.exe LICENSE /r:0 /w:0
+          if ($LastExitCode -le 7) {
+            echo "LastExitCode = $LastExitCode"
+            $global:LastExitCode = 0
+          }
+
+      - name: Upload Xenia Canary Netplay artifact
+        if: steps.prepare_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: xenia_canary_netplay_windows_low_port_remap
+          path: artifacts\xenia_canary_netplay
+          if-no-files-found: error
+          retention-days: 7
