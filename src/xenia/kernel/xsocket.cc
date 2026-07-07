@@ -280,6 +280,20 @@ X_STATUS XSocket::Bind(const XSOCKADDR_IN* name, int name_len) {
     sa_in.address_port = upnp->GetMappedBindPort(name->address_port);
   }
 
+  // BO2 Zombies binds a VDP/UDP socket to port 1000 during the Netplay
+  // relaunch path. On Linux and Wine, non-root processes cannot bind ports
+  // below net.ipv4.ip_unprivileged_port_start, which is normally 1024.
+  // Preserve wildcard port 0, but remap explicit privileged ports into the
+  // unprivileged range. Stock Canary has the same workaround for all ports
+  // below 1024; this keeps Netplay's wildcard behavior narrower.
+  const uint16_t original_port = uint16_t(sa_in.address_port);
+  if (original_port > 0 && original_port < 1024) {
+    const uint16_t new_port = original_port + 10000;
+    sa_in.address_port = new_port;
+    XELOGW("XSocket::Bind: port {} requires privileges, remapping to port {}",
+           original_port, new_port);
+  }
+
   sockaddr addr = sa_in.to_host();
 
   // Force socket to bind to the IP of the selected interface
