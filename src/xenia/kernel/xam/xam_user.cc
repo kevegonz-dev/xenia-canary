@@ -126,7 +126,13 @@ X_HRESULT_result_t XamUserGetSigninInfo_entry(
   xe::string_util::copy_truncating(info->name, user_profile->name(),
                                    xe::countof(info->name));
 
-  if (!flags || flags & X_USER_GET_SIGNIN_INFO_OFFLINE_XUID_ONLY) {
+  // X_USER_INFO_FLAG_LIVE_ENABLED. Stock Canary doesn't define the named
+  // constant yet, but BO2 Zombies uses this info to decide whether the local
+  // player is a valid lobby member.
+  info->flags = 1;
+
+  if (!flags || flags & X_USER_GET_SIGNIN_INFO_OFFLINE_XUID_ONLY ||
+      flags & X_USER_GET_SIGNIN_INFO_ONLINE_XUID_ONLY) {
     info->xuid = user_profile->xuid();
   }
 
@@ -490,10 +496,7 @@ dword_result_t XamUserIsOnlineEnabled_entry(dword_t user_index) {
     return 0;
   }
 
-  return kernel_state()
-      ->xam_state()
-      ->GetUserProfile(user_index)
-      ->IsLiveEnabled();
+  return 1;
 }
 DECLARE_XAM_EXPORT1(XamUserIsOnlineEnabled, kUserProfiles, kImplemented);
 
@@ -506,10 +509,7 @@ dword_result_t XamUserGetMembershipTier_entry(dword_t user_index) {
     return X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierNone;
   }
 
-  return kernel_state()
-      ->xam_state()
-      ->GetUserProfile(user_index)
-      ->GetSubscriptionTier();
+  return X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierGold;
 }
 DECLARE_XAM_EXPORT1(XamUserGetMembershipTier, kUserProfiles, kImplemented);
 
@@ -519,7 +519,7 @@ dword_result_t XamUserGetMembershipTierFromXUID_entry(qword_t xuid) {
     return X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierNone;
   }
 
-  return profile->GetSubscriptionTier();
+  return X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierGold;
 }
 DECLARE_XAM_EXPORT1(XamUserGetMembershipTierFromXUID, kUserProfiles,
                     kImplemented);
