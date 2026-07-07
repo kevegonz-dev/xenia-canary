@@ -53,7 +53,13 @@ X_HRESULT_result_t XamUserGetXUID_entry(dword_t user_index, dword_t type_mask,
   uint64_t xuid = 0;
 
   auto type = user_profile->type() & type_mask;
-  if (type & (2 | 4)) {
+  if (type_mask & 4) {
+    // BO2 Zombies Local asks for an online XUID while still running with a
+    // local profile. Treat the signed-in local profile as having an online XUID
+    // for this query without changing the global sign-in state.
+    xuid = user_profile->xuid();
+    result = X_E_SUCCESS;
+  } else if (type & 2) {
     // maybe online profile?
     xuid = user_profile->xuid();
     result = X_E_SUCCESS;
