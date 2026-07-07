@@ -57,11 +57,92 @@ namespace xam {
 // https://github.com/tpn/winsdk-10/blob/master/Include/10.0.14393.0/km/wdm.h#L15539
 typedef enum _MODE { KernelMode, UserMode, MaximumMode } MODE;
 
+constexpr uint32_t kBo2TitleId = 0x415608C3;
+
+uint32_t g_background_download_mode = 0;
+uint32_t g_background_download_polling_active = 0;
+
+bool ShouldTraceBo2BackgroundDownload(uint32_t& counter) {
+  if (kernel_state()->title_id() != kBo2TitleId) {
+    return false;
+  }
+
+  ++counter;
+  return counter <= 128 || ((counter & (counter - 1)) == 0);
+}
+
 dword_result_t XamFeatureEnabled_entry(dword_t app_id) { return 0; }
 DECLARE_XAM_EXPORT1(XamFeatureEnabled, kNone, kStub);
 
 dword_result_t XamGetStagingMode_entry() { return cvars::staging_mode; }
 DECLARE_XAM_EXPORT1(XamGetStagingMode, kNone, kStub);
+
+dword_result_t XamBackgroundDownloadSetMode_entry(dword_t mode) {
+  g_background_download_mode = static_cast<uint32_t>(mode);
+
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2BackgroundDownload(trace_count)) {
+    XELOGI("BO2 background-download trace: XamBackgroundDownloadSetMode({})",
+           g_background_download_mode);
+  }
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadSetMode, kNone, kStub);
+
+dword_result_t XamBackgroundDownloadIsEnabled_entry() {
+  const uint32_t enabled = g_background_download_mode ? 1 : 0;
+
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2BackgroundDownload(trace_count)) {
+    XELOGI(
+        "BO2 background-download trace: XamBackgroundDownloadIsEnabled() -> {}",
+        enabled);
+  }
+
+  return enabled;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadIsEnabled, kNone, kStub);
+
+dword_result_t XamBackgroundDownloadGetMode_entry() {
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2BackgroundDownload(trace_count)) {
+    XELOGI(
+        "BO2 background-download trace: XamBackgroundDownloadGetMode() -> {}",
+        g_background_download_mode);
+  }
+
+  return g_background_download_mode;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadGetMode, kNone, kStub);
+
+dword_result_t XamBackgroundDownloadSetPollingActive_entry(dword_t active) {
+  g_background_download_polling_active = static_cast<uint32_t>(active) ? 1 : 0;
+
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2BackgroundDownload(trace_count)) {
+    XELOGI(
+        "BO2 background-download trace: "
+        "XamBackgroundDownloadSetPollingActive({})",
+        g_background_download_polling_active);
+  }
+
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadSetPollingActive, kNone, kStub);
+
+dword_result_t XamBackgroundDownloadGetPollingActive_entry() {
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2BackgroundDownload(trace_count)) {
+    XELOGI(
+        "BO2 background-download trace: "
+        "XamBackgroundDownloadGetPollingActive() -> {}",
+        g_background_download_polling_active);
+  }
+
+  return g_background_download_polling_active;
+}
+DECLARE_XAM_EXPORT1(XamBackgroundDownloadGetPollingActive, kNone, kStub);
 
 // Empty stub schema binary.
 uint8_t schema_bin[] = {

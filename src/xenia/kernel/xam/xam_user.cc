@@ -34,6 +34,24 @@ constexpr uint32_t kXUserXuidGuest = 4;
 constexpr uint32_t kXUserInfoFlagLiveEnabled = 1;
 constexpr uint64_t kSyntheticOnlineXuidPrefix = 0x0009000000000000ull;
 constexpr uint64_t kSyntheticOnlineXuidLowMask = 0x0000FFFFFFFFFFFFull;
+constexpr uint32_t kBo2TitleId = 0x415608C3;
+
+bool ShouldTraceBo2Profile(uint32_t& counter, uint32_t initial_limit = 128) {
+  if (kernel_state()->title_id() != kBo2TitleId) {
+    return false;
+  }
+
+  ++counter;
+  return counter <= initial_limit || ((counter & (counter - 1)) == 0);
+}
+
+uint32_t SettingIdOrZero(be<uint32_t>* setting_ids, uint32_t setting_count,
+                         uint32_t index) {
+  if (!setting_ids || index >= setting_count) {
+    return 0;
+  }
+  return static_cast<uint32_t>(setting_ids[index]);
+}
 
 uint64_t GetProfileOnlineXuid(const UserProfile* user_profile) {
   if (!user_profile) {
@@ -133,6 +151,16 @@ X_HRESULT_result_t XamUserGetXUID_entry(dword_t user_index, dword_t type_mask,
     result = X_E_NO_SUCH_USER;
   }
   *xuid_ptr = xuid;
+
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2Profile(trace_count)) {
+    XELOGI(
+        "BO2 profile trace: XamUserGetXUID(user={}, mask={:08X}) -> "
+        "result={:08X} xuid={:016X}",
+        static_cast<uint32_t>(user_index), static_cast<uint32_t>(type_mask),
+        result, xuid);
+  }
+
   return result;
 }
 DECLARE_XAM_EXPORT1(XamUserGetXUID, kUserProfiles, kImplemented);
@@ -147,10 +175,27 @@ dword_result_t XamUserGetIndexFromXUID_entry(qword_t xuid, dword_t flags,
       GetUserIndexByOfflineOrOnlineXuid(static_cast<uint64_t>(xuid));
 
   if (user_index == XUserIndexAny) {
+    static uint32_t trace_count = 0;
+    if (ShouldTraceBo2Profile(trace_count)) {
+      XELOGI(
+          "BO2 profile trace: XamUserGetIndexFromXUID(xuid={:016X}, "
+          "flags={:08X}) -> result={:08X}",
+          static_cast<uint64_t>(xuid), static_cast<uint32_t>(flags),
+          X_E_NO_SUCH_USER);
+    }
     return X_E_NO_SUCH_USER;
   }
 
   *index = user_index;
+
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2Profile(trace_count)) {
+    XELOGI(
+        "BO2 profile trace: XamUserGetIndexFromXUID(xuid={:016X}, "
+        "flags={:08X}) -> result={:08X} index={}",
+        static_cast<uint64_t>(xuid), static_cast<uint32_t>(flags),
+        X_ERROR_SUCCESS, user_index);
+  }
 
   return X_ERROR_SUCCESS;
 }
@@ -167,6 +212,13 @@ dword_result_t XamUserGetSigninState_entry(dword_t user_index) {
         kernel_state()->xam_state()->GetUserProfile(user_index);
     signin_state = user_profile->signin_state();
   }
+
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2Profile(trace_count, 64)) {
+    XELOGI("BO2 profile trace: XamUserGetSigninState(user={}) -> state={}",
+           static_cast<uint32_t>(user_index), signin_state);
+  }
+
   return signin_state;
 }
 DECLARE_XAM_EXPORT2(XamUserGetSigninState, kUserProfiles, kImplemented,
@@ -206,6 +258,18 @@ X_HRESULT_result_t XamUserGetSigninInfo_entry(
   }
 
   info->signin_state = user_profile->signin_state();
+
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2Profile(trace_count)) {
+    XELOGI(
+        "BO2 profile trace: XamUserGetSigninInfo(user={}, flags={:08X}) -> "
+        "result={:08X} name='{}' out_flags={:08X} xuid={:016X} state={}",
+        static_cast<uint32_t>(user_index), static_cast<uint32_t>(flags),
+        X_E_SUCCESS, user_profile->name(), static_cast<uint32_t>(info->flags),
+        static_cast<uint64_t>(info->xuid),
+        static_cast<uint32_t>(info->signin_state));
+  }
+
   return X_E_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserGetSigninInfo, kUserProfiles, kImplemented);
@@ -235,6 +299,16 @@ dword_result_t XamUserGetName_entry(dword_t user_index, dword_t buffer,
 
   char* str_buffer = kernel_memory()->TranslateVirtual<char*>(buffer);
   xe::string_util::copy_truncating(str_buffer, user_name, bytes_to_copy);
+
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2Profile(trace_count)) {
+    XELOGI(
+        "BO2 profile trace: XamUserGetName(user={}, buffer={:08X}, len={}) -> "
+        "result={:08X} name='{}'",
+        static_cast<uint32_t>(user_index), static_cast<uint32_t>(buffer),
+        static_cast<uint32_t>(buffer_len), X_ERROR_SUCCESS, user_name);
+  }
+
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserGetName, kUserProfiles, kImplemented);
@@ -316,6 +390,20 @@ uint32_t XamUserReadProfileSettingsEx(
     return X_ERROR_INSUFFICIENT_BUFFER;
   }
 
+  static uint32_t trace_request_count = 0;
+  if (ShouldTraceBo2Profile(trace_request_count)) {
+    XELOGI(
+        "BO2 profile trace: XamUserReadProfileSettingsEx request title={:08X} "
+        "user={} xuid_count={} first_xuid={:016X} setting_count={} "
+        "settings=[{:08X},{:08X},{:08X},{:08X}] buffer_size={}",
+        title_id, user_index, xuid_count,
+        xuids ? static_cast<uint64_t>(xuids[0]) : 0, setting_count,
+        SettingIdOrZero(setting_ids, setting_count, 0),
+        SettingIdOrZero(setting_ids, setting_count, 1),
+        SettingIdOrZero(setting_ids, setting_count, 2),
+        SettingIdOrZero(setting_ids, setting_count, 3), buffer_size);
+  }
+
   auto run = [=](uint32_t& extended_error, uint32_t& length) {
     extended_error = 0;
     length = 0;
@@ -387,6 +475,17 @@ uint32_t XamUserReadProfileSettingsEx(
 
     extended_error = X_HRESULT_FROM_WIN32(X_STATUS_SUCCESS);
     length = 0;
+
+    static uint32_t trace_result_count = 0;
+    if (ShouldTraceBo2Profile(trace_result_count)) {
+      XELOGI(
+          "BO2 profile trace: XamUserReadProfileSettingsEx result "
+          "profile_xuid={:016X} requested_xuid={:016X} out_count={} "
+          "result={:08X}",
+          user_profile->xuid(), requested_xuid,
+          static_cast<uint32_t>(out_header->setting_count), X_STATUS_SUCCESS);
+    }
+
     return X_STATUS_SUCCESS;
   };
 
@@ -503,6 +602,16 @@ dword_result_t XamUserCheckPrivilege_entry(dword_t user_index, dword_t mask,
   // BO2 Zombies Local needs the signed-in local profile to satisfy privilege
   // checks before it will treat that profile as a valid lobby participant.
   *out_value = 1;
+
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2Profile(trace_count)) {
+    XELOGI(
+        "BO2 profile trace: XamUserCheckPrivilege(user={}, mask={:08X}) -> "
+        "result={:08X} value={}",
+        static_cast<uint32_t>(user_index), static_cast<uint32_t>(mask),
+        X_ERROR_SUCCESS, static_cast<uint32_t>(*out_value));
+  }
+
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserCheckPrivilege, kUserProfiles, kStub);
@@ -588,6 +697,12 @@ dword_result_t XamUserIsOnlineEnabled_entry(dword_t user_index) {
     return 0;
   }
 
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2Profile(trace_count)) {
+    XELOGI("BO2 profile trace: XamUserIsOnlineEnabled(user={}) -> 1",
+           static_cast<uint32_t>(user_index));
+  }
+
   return 1;
 }
 DECLARE_XAM_EXPORT1(XamUserIsOnlineEnabled, kUserProfiles, kImplemented);
@@ -601,6 +716,15 @@ dword_result_t XamUserGetMembershipTier_entry(dword_t user_index) {
     return X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierNone;
   }
 
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2Profile(trace_count)) {
+    XELOGI(
+        "BO2 profile trace: XamUserGetMembershipTier(user={}) -> {}",
+        static_cast<uint32_t>(user_index),
+        static_cast<uint32_t>(
+            X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierGold));
+  }
+
   return X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierGold;
 }
 DECLARE_XAM_EXPORT1(XamUserGetMembershipTier, kUserProfiles, kImplemented);
@@ -609,6 +733,16 @@ dword_result_t XamUserGetMembershipTierFromXUID_entry(qword_t xuid) {
   const auto profile = GetUserProfileByOfflineOrOnlineXuid(xuid);
   if (!profile) {
     return X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierNone;
+  }
+
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2Profile(trace_count)) {
+    XELOGI(
+        "BO2 profile trace: XamUserGetMembershipTierFromXUID(xuid={:016X}) "
+        "-> profile_xuid={:016X} tier={}",
+        static_cast<uint64_t>(xuid), profile->xuid(),
+        static_cast<uint32_t>(
+            X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierGold));
   }
 
   return X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierGold;
@@ -658,6 +792,15 @@ dword_result_t XamUserAreUsersFriends_entry(
 
   if (!overlapped_ptr && are_friends_ptr) {
     *are_friends_ptr = are_friends;
+  }
+
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2Profile(trace_count)) {
+    XELOGI(
+        "BO2 profile trace: XamUserAreUsersFriends(user={}, count={}) -> "
+        "result={:08X} are_friends={}",
+        static_cast<uint32_t>(user_index), static_cast<uint32_t>(xuids_count),
+        result, are_friends);
   }
 
   return result;
@@ -789,6 +932,15 @@ dword_result_t XamReadTile_entry(dword_t tile_type, dword_t title_id,
   if (!user) {
     user = GetUserProfileByOfflineOrOnlineXuid(static_cast<uint64_t>(item_id));
     if (!user) {
+      static uint32_t trace_fail_count = 0;
+      if (ShouldTraceBo2Profile(trace_fail_count)) {
+        XELOGI(
+            "BO2 profile trace: XamReadTile(type={}, title={:08X}, "
+            "item={:016X}, user={}) -> result={:08X}",
+            static_cast<uint32_t>(tile_type), static_cast<uint32_t>(title_id),
+            static_cast<uint64_t>(item_id), static_cast<uint32_t>(user_index),
+            X_ERROR_INVALID_PARAMETER);
+      }
       return X_ERROR_INVALID_PARAMETER;
     }
   }
@@ -819,6 +971,17 @@ dword_result_t XamReadTile_entry(dword_t tile_type, dword_t title_id,
 
     extended_error = X_HRESULT_FROM_WIN32(result);
     length = 0;
+
+    static uint32_t trace_count = 0;
+    if (ShouldTraceBo2Profile(trace_count)) {
+      XELOGI(
+          "BO2 profile trace: XamReadTile(type={}, title={:08X}, item={:016X}, "
+          "user_arg={}, resolved_xuid={:016X}) -> result={:08X} bytes={}",
+          static_cast<uint32_t>(tile_type), static_cast<uint32_t>(title_id),
+          static_cast<uint64_t>(item_id), static_cast<uint32_t>(user_index),
+          user->xuid(), result, static_cast<uint32_t>(tile.size()));
+    }
+
     return result;
   };
 
@@ -921,6 +1084,15 @@ dword_result_t XamReadTileToTexture_entry(dword_t tile_type, dword_t title_id,
 
   auto user = kernel_state()->xam_state()->GetUserProfile(user_index);
   if (!user) {
+    static uint32_t trace_fail_count = 0;
+    if (ShouldTraceBo2Profile(trace_fail_count)) {
+      XELOGI(
+          "BO2 profile trace: XamReadTileToTexture(type={}, title={:08X}, "
+          "tile={:016X}, user={}) -> result={:08X}",
+          static_cast<uint32_t>(tile_type), static_cast<uint32_t>(title_id),
+          static_cast<uint64_t>(tile_id), static_cast<uint32_t>(user_index),
+          X_ERROR_INVALID_PARAMETER);
+    }
     return X_ERROR_INVALID_PARAMETER;
   }
 
@@ -930,6 +1102,15 @@ dword_result_t XamReadTileToTexture_entry(dword_t tile_type, dword_t title_id,
           tile_id);
 
   if (tile.empty()) {
+    static uint32_t trace_empty_count = 0;
+    if (ShouldTraceBo2Profile(trace_empty_count)) {
+      XELOGI(
+          "BO2 profile trace: XamReadTileToTexture(type={}, title={:08X}, "
+          "tile={:016X}, user={}, resolved_xuid={:016X}) -> empty tile",
+          static_cast<uint32_t>(tile_type), static_cast<uint32_t>(title_id),
+          static_cast<uint64_t>(tile_id), static_cast<uint32_t>(user_index),
+          user->xuid());
+    }
     return X_ERROR_SUCCESS;
   }
 
@@ -1129,6 +1310,16 @@ dword_result_t XamUserGetSubscriptionType_entry(dword_t user_index,
       X_XAMACCOUNTINFO::AccountSubscriptionTier::kSubscriptionTierGold;
   *r5 = 0x0;
 
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2Profile(trace_count)) {
+    XELOGI(
+        "BO2 profile trace: XamUserGetSubscriptionType(user={}) -> "
+        "result={:08X} subscription={} r5={} overlapped={:08X}",
+        static_cast<uint32_t>(user_index), X_ERROR_SUCCESS,
+        static_cast<uint32_t>(*subscription_ptr), static_cast<uint32_t>(*r5),
+        static_cast<uint32_t>(overlapped_ptr));
+  }
+
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT1(XamUserGetSubscriptionType, kUserProfiles, kStub);
@@ -1161,6 +1352,15 @@ dword_result_t XamUserGetUserFlagsFromXUID_entry(qword_t xuid) {
   const auto& user_profile = GetUserProfileByOfflineOrOnlineXuid(xuid);
   if (!user_profile) {
     return 0;
+  }
+
+  static uint32_t trace_count = 0;
+  if (ShouldTraceBo2Profile(trace_count)) {
+    XELOGI(
+        "BO2 profile trace: XamUserGetUserFlagsFromXUID(xuid={:016X}) -> "
+        "profile_xuid={:016X} flags={:08X}",
+        static_cast<uint64_t>(xuid), user_profile->xuid(),
+        user_profile->GetCachedFlags());
   }
 
   return user_profile->GetCachedFlags();
